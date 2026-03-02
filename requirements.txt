@@ -5,6 +5,13 @@ Pillow==10.4.0
 numpy==1.26.4
 srt==3.5.3
 jsonschema==4.23.0
-requests
-APScheduler
 
+# === Minimal deps needed for video/image routes to load ===
+openai-whisper
+boto3
+playwright
+yt-dlp
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
