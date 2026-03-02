@@ -75,9 +75,7 @@ def queue_task_wrapper(bypass_queue=False):
     return decorator
 
 import importlib
-import os
 import logging
-from flask import Flask
 
 logger = logging.getLogger(__name__)
 
