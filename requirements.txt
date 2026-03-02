@@ -1,24 +1,7 @@
-# ... your existing packages from the repo
-Flask
-Werkzeug
-requests
-ffmpeg-python
-openai-whisper
-gunicorn
-APScheduler
-srt
-numpy
-torch
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client
-google-api-core
-google-cloud-storage
-google-cloud-run
-psutil
-boto3
-Pillow
-matplotlib
-yt-dlp
-jsonschema==4.23.0  # ← ADD THIS LINE (pinned for stability)
+Flask==3.0.3
+gunicorn==22.0.0
+ffmpeg-python==0.2.0
+Pillow==10.4.0
+numpy==1.26.4
+srt==3.5.3
+jsonschema==4.23.0
