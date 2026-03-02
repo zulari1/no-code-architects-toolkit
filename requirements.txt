@@ -1,6 +1,12 @@
 Flask
+Werkzeug
 requests
 ffmpeg-python
 gunicorn
+APScheduler
+srt
+psutil
+boto3
 Pillow
+matplotlib
 yt-dlp
