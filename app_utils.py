@@ -74,15 +74,32 @@ def queue_task_wrapper(bypass_queue=False):
         return wrapper
     return decorator
 
-def discover_and_register_blueprints(app, base_dir='routes'):
-    """
-    Dynamically discovers and registers all Flask blueprints in the routes directory.
-    Recursively searches all subdirectories for Python modules containing Blueprint instances.
+def discover_and_register_blueprints(app: Flask):
+    """Safe discovery – skips modules with missing dependencies (google, whisper, etc.)"""
+    routes_dir = os.path.dirname(os.path.abspath(__file__)) + "/routes"
+    registered = 0
+
+    for root, dirs, files in os.walk(routes_dir):
+        for file in files:
+            if file.endswith(".py") and not file.startswith("__"):
+                module_path = os.path.join(root, file)
+                rel_path = os.path.relpath(module_path, routes_dir).replace(os.sep, ".")[:-3]
+                full_module = f"routes.{rel_path}"
+
+                try:
+                    mod = importlib.import_module(full_module)
+                    if hasattr(mod, "bp"):
+                        app.register_blueprint(mod.bp)
+                        print(f"INFO:app_utils: Registered blueprint: {full_module}")
+                        registered += 1
+                except Exception as e:
+                    # Silent skip for missing deps (google, whisper, etc.)
+                    if "google" in str(e) or "whisper" in str(e) or "boto3" in str(e) or "playwright" in str(e) or "yt_dlp" in str(e):
+                        continue
+                    print(f"WARNING: Failed to load {full_module}: {type(e).__name__}")
+
+    print(f"INFO:app_utils: Successfully registered {registered} blueprints")
     
-    Args:
-        app (Flask): The Flask application instance
-        base_dir (str): Base directory to start searching for blueprints (default: 'routes')
-    """
     import importlib
     import pkgutil
     import inspect
