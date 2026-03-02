@@ -1,14 +1,24 @@
+# ... your existing packages from the repo
 Flask
 Werkzeug
 requests
 ffmpeg-python
+openai-whisper
 gunicorn
 APScheduler
 srt
+numpy
+torch
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+google-api-core
+google-cloud-storage
+google-cloud-run
 psutil
 boto3
 Pillow
 matplotlib
 yt-dlp
-jsonschema==4.23.0
-gunicorn==23.0.0
+jsonschema==4.23.0  # ← ADD THIS LINE (pinned for stability)
