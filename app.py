@@ -112,6 +112,37 @@ def vertical_crop():
     os.unlink(tmp_in_path)
     return send_file(output_path, as_attachment=True, download_name="vertical_short.mp4")
 
+# ====================== IMAGE TO VIDEO (simple zoom/pan animation) ======================
+@app.route('/v1/image/to_video', methods=['POST'])
+def image_to_video():
+    if 'file' not in request.files:
+        return jsonify({"error": "No image file"}), 400
+    file = request.files['file']
+    duration = request.form.get('duration', 5, type=float)  # seconds
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(input_path)
+
+        output_filename = f"anim_{uuid.uuid4()}.mp4"
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
+
+        try:
+            # Basic Ken Burns style: slow zoom-in + slight pan
+            stream = ffmpeg.input(input_path, loop=1, t=duration)
+            stream = ffmpeg.filter(stream, 'zoompan', z='zoom+0.001', d=125, x='iw/2-(iw/zoom/2)', y='ih/2-(ih/zoom/2)', s='1080x1920')
+            stream = ffmpeg.output(stream, output_path, vcodec='libx264', pix_fmt='yuv420p', r=30)
+            ffmpeg.run(stream, overwrite_output=True)
+        except ffmpeg.Error as e:
+            os.remove(input_path)
+            return jsonify({"error": str(e.stderr.decode())}), 500
+
+        os.remove(input_path)
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
+
+    return jsonify({"error": "Invalid file type"}), 400
+    
 # 5. Thumbnail from video
 @app.route('/v1/video/thumbnail', methods=['POST'])
 def thumbnail():
