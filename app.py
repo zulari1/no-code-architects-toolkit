@@ -15,6 +15,86 @@ def health():
 def root():
     return jsonify({"status": "ok", "message": "Faceless YouTube Toolkit - trim, caption, concat, vertical, thumbnail"}), 200
 
+# ====================== MINIO SETUP (using your Railway env vars) ======================
+s3_client = boto3.client(
+    's3',
+    endpoint_url=os.getenv('S3_ENDPOINT_URL'),
+    aws_access_key_id=os.getenv('S3_ACCESS_KEY'),
+    aws_secret_access_key=os.getenv('S3_SECRET_KEY'),
+    region_name=os.getenv('S3_REGION', 'us-east-1'),
+    config=Config(signature_version='s3v4')
+)
+BUCKET_NAME = os.getenv('S3_BUCKET_NAME', 'nca-toolkit-prod')
+
+def upload_to_minio(file_path, object_name):
+    try:
+        s3_client.upload_file(file_path, BUCKET_NAME, object_name)
+        # Return public URL (adjust domain if you have custom MINIO_DOMAIN)
+        return f"https://{BUCKET_NAME}.railway.internal/{object_name}"
+    except Exception as e:
+        return f"Upload failed: {str(e)}"
+
+# ====================== HEALTH & ROOT ======================
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "healthy", "message": "Faceless Video Toolkit - All Features Ready"}), 200
+
+@app.route('/', methods=['GET'])
+def root():
+    return jsonify({"status": "ok", "message": "All endpoints working"}), 200
+
+# ====================== IMAGE TO VIDEO (your requested endpoint) ======================
+@app.route('/v1/image/to_video', methods=['POST'])
+def image_to_video():
+    data = request.json or {}
+    image_url = data.get('image_url')
+    duration = float(data.get('duration', 20))
+    zoom_speed = float(data.get('zoom_speed', 6))
+
+    if not image_url and 'file' not in request.files:
+        return jsonify({"error": "image_url or file is required"}), 400
+
+    # Download or save file
+    if image_url:
+        try:
+            r = requests.get(image_url, timeout=15, stream=True)
+            r.raise_for_status()
+            ext = image_url.split('.')[-1].lower()
+            input_path = f"/tmp/img_{uuid.uuid4()}.{ext}"
+            with open(input_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+        except Exception as e:
+            return jsonify({"error": f"Failed to download image: {str(e)}"}), 400
+    else:
+        file = request.files['file']
+        filename = secure_filename(file.filename)
+        input_path = os.path.join('/tmp', filename)
+        file.save(input_path)
+
+    output_filename = f"anim_{uuid.uuid4()}.mp4"
+    output_path = f"/tmp/{output_filename}"
+
+    try:
+        stream = ffmpeg.input(input_path, loop=1, t=duration)
+        stream = ffmpeg.filter(stream, 'zoompan', z=f'zoom+0.00{zoom_speed}', d=125, x='iw/2-(iw/zoom/2)', y='ih/2-(ih/zoom/2)', s='1080x1920')
+        stream = ffmpeg.output(stream, output_path, vcodec='libx264', pix_fmt='yuv420p', r=30)
+        ffmpeg.run(stream, overwrite_output=True)
+    except ffmpeg.Error as e:
+        if os.path.exists(input_path): os.remove(input_path)
+        return jsonify({"error": str(e.stderr.decode())}), 500
+
+    # Upload to MinIO and return URL
+    video_url = upload_to_minio(output_path, output_filename)
+    if os.path.exists(input_path): os.remove(input_path)
+    if os.path.exists(output_path): os.remove(output_path)
+
+    return jsonify({
+        "video_url": video_url,
+        "duration": duration,
+        "id": data.get("id", "Scene 1")
+    }), 200
+    
 # ====================== CORE ENDPOINTS ======================
 
 # 1. Trim video
@@ -112,59 +192,7 @@ def vertical_crop():
     os.unlink(tmp_in_path)
     return send_file(output_path, as_attachment=True, download_name="vertical_short.mp4")
 
-# ====================== IMAGE TO VIDEO (simple zoom/pan animation) ======================
-import requests
 
-@app.route('/v1/image/to_video', methods=['POST'])
-def image_to_video():
-    data = request.json or {}
-    image_url = data.get('image_url')
-    duration = data.get('duration', 5)
-
-    if not image_url:
-        if 'file' in request.files:
-            file = request.files['file']
-            if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                input_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(input_path)
-            else:
-                return jsonify({"error": "Invalid file type"}), 400
-        else:
-            return jsonify({"error": "image_url or file is required"}), 400
-    else:
-        # Download from URL
-        try:
-            r = requests.get(image_url, timeout=15, stream=True)
-            r.raise_for_status()
-            ext = image_url.split('.')[-1].lower()
-            if ext not in ['png', 'jpg', 'jpeg']:
-                return jsonify({"error": "Unsupported image format"}), 400
-            input_path = os.path.join(app.config['UPLOAD_FOLDER'], f"img_{uuid.uuid4()}.{ext}")
-            with open(input_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-        except Exception as e:
-            return jsonify({"error": f"Failed to download image: {str(e)}"}), 400
-
-    output_filename = f"anim_{uuid.uuid4()}.mp4"
-    output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
-
-    try:
-        # Simple zoom-in animation (Ken Burns style)
-        stream = ffmpeg.input(input_path, loop=1, t=duration)
-        stream = ffmpeg.filter(stream, 'zoompan', z='zoom+0.001', d=125, x='iw/2-(iw/zoom/2)', y='ih/2-(ih/zoom/2)', s='1080x1920')
-        stream = ffmpeg.output(stream, output_path, vcodec='libx264', pix_fmt='yuv420p', r=30)
-        ffmpeg.run(stream, overwrite_output=True)
-    except ffmpeg.Error as e:
-        if os.path.exists(input_path):
-            os.remove(input_path)
-        return jsonify({"error": str(e.stderr.decode())}), 500
-
-    if os.path.exists(input_path):
-        os.remove(input_path)
-    return send_file(output_path, as_attachment=True, download_name=output_filename)
-    
 # 5. Thumbnail from video
 @app.route('/v1/video/thumbnail', methods=['POST'])
 def thumbnail():
