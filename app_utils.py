@@ -74,8 +74,14 @@ def queue_task_wrapper(bypass_queue=False):
         return wrapper
     return decorator
 
+import importlib
+import os
+import logging
+from flask import Flask
+
+logger = logging.getLogger(__name__)
+
 def discover_and_register_blueprints(app: Flask):
-    """Safe discovery – skips modules with missing dependencies (google, whisper, etc.)"""
     routes_dir = os.path.dirname(os.path.abspath(__file__)) + "/routes"
     registered = 0
 
@@ -90,15 +96,16 @@ def discover_and_register_blueprints(app: Flask):
                     mod = importlib.import_module(full_module)
                     if hasattr(mod, "bp"):
                         app.register_blueprint(mod.bp)
-                        print(f"INFO:app_utils: Registered blueprint: {full_module}")
+                        logger.info(f"Registered blueprint: {full_module}")
                         registered += 1
                 except Exception as e:
-                    # Silent skip for missing deps (google, whisper, etc.)
-                    if "google" in str(e) or "whisper" in str(e) or "boto3" in str(e) or "playwright" in str(e) or "yt_dlp" in str(e):
+                    # Skip modules that require google, whisper, playwright, yt_dlp, boto3
+                    if any(x in str(e).lower() for x in ["google", "whisper", "playwright", "yt_dlp", "boto3"]):
+                        logger.debug(f"Skipped module {full_module} (missing dep: {type(e).__name__})")
                         continue
-                    print(f"WARNING: Failed to load {full_module}: {type(e).__name__}")
+                    logger.warning(f"Failed to load {full_module}: {type(e).__name__}: {str(e)}")
 
-    print(f"INFO:app_utils: Successfully registered {registered} blueprints")
+    logger.info(f"Successfully registered {registered} blueprints")
     
     import importlib
     import pkgutil
